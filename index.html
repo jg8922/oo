@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Oráculo IA | Fix 404</title>
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <style>
+        :root { --p: #6c5ce7; --bg: #1e272e; --card: #ffffff; --danger: #ff7675; --success: #00b894; }
+        body { font-family: 'Segoe UI', sans-serif; background: var(--bg); color: white; display: flex; justify-content: center; padding: 20px; margin: 0; }
+        .container { width: 100%; max-width: 500px; background: #2f3640; padding: 25px; border-radius: 15px; text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+        .screen { display: none; }
+        .active { display: block; animation: fadeIn 0.3s; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        input, button { width: 100%; padding: 12px; margin: 10px 0; border-radius: 8px; border: none; font-size: 1rem; box-sizing: border-box; }
+        button { background: var(--p); color: white; cursor: pointer; font-weight: bold; }
+        .player-item { background: #3d444b; padding: 10px; margin: 5px 0; border-radius: 8px; display: flex; justify-content: space-between; }
+        .card { background: white; color: #333; padding: 20px; border-radius: 12px; font-size: 1.2rem; margin: 15px 0; font-weight: bold; border-bottom: 5px solid var(--p); }
+        .timer { font-size: 2.5rem; color: var(--danger); font-weight: bold; }
+        #my-id-display { background: #1e272e; padding: 10px; border-radius: 5px; color: #f9ca24; cursor: pointer; font-family: monospace; }
+        #ai-result { text-align: left; font-size: 0.95rem; font-weight: normal; line-height: 1.5; color: #2d3436; white-space: pre-wrap; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2 id="status-line">🔮 ORÁCULO DA IA</h2>
+
+    <div id="screen-home" class="screen active">
+        <input type="text" id="nick" placeholder="Seu apelido...">
+        <input type="password" id="geminiKey" placeholder="Sua API Key (AIza...)">
+        <button onclick="prepareSetup()">Configurar Sala</button>
+        <hr style="border: 0; border-top: 1px solid #444; margin: 20px 0;">
+        <input type="text" id="joinId" placeholder="Código do amigo">
+        <button onclick="joinRoom()" style="background: var(--success)">Entrar na Sala</button>
+    </div>
+
+    <div id="screen-setup" class="screen">
+        <h3>Opções da Partida</h3>
+        <button onclick="createRoom()">Criar Sala</button>
+    </div>
+
+    <div id="screen-lobby" class="screen">
+        <p>Código da Sala:</p>
+        <div id="my-id-display" onclick="copyId()">Gerando...</div>
+        <div id="playerList" style="margin: 20px 0;"></div>
+        <button id="readyBtn" onclick="sendReady()">ESTOU PRONTO</button>
+        <button id="startBtn" onclick="startGame()" style="display:none; background: #e67e22;">COMEÇAR</button>
+    </div>
+
+    <div id="screen-game" class="screen">
+        <div id="roundTxt" style="font-weight: bold;">Rodada 1 / 10</div>
+        <div id="timerDisplay" class="timer">15</div>
+        <div id="qCard" class="card">Aguardando...</div>
+        <div id="vote-section">
+            <p>VOTAÇÃO: Quem deve responder?</p>
+            <div id="targetButtons"></div>
+        </div>
+        <div id="answer-section" style="display:none">
+            <input type="text" id="ansInp" placeholder="Sua resposta...">
+            <button id="btnSendAns" onclick="submitAnswer()">ENVIAR AO ORÁCULO</button>
+        </div>
+        <div id="ai-section" style="display:none">
+            <p>🤖 O Oráculo está analisando...</p>
+            <div id="ai-result" class="card"></div>
+        </div>
+    </div>
+</div>
+
+<script>
+    let peer, conn, myId, isHost = false, myNick = "", players = [], cards = [], currentRound = 1;
+    let votes = {}, timerInt, geminiKey = "";
+
+    const defCards = ["Quem é o protagonista de One Piece?", "Qual herói usa um escudo de Vibranium?", "Fraqueza do Superman?", "IA de Halo?", "Mundo de Zelda?"];
+
+    function showScreen(id) {
+        document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+        document.getElementById(id).classList.add('active');
+    }
+
+    function prepareSetup() {
+        myNick = document.getElementById('nick').value;
+        geminiKey = document.getElementById('geminiKey').value.trim();
+        if(!myNick || !geminiKey) return alert("Preencha Nick e Chave!");
+        showScreen('screen-setup');
+    }
+
+    function createRoom() {
+        isHost = true;
+        peer = new Peer();
+        peer.on('open', (id) => {
+            myId = id;
+            document.getElementById('my-id-display').innerText = id;
+            cards = [...defCards].sort(() => Math.random() - 0.5);
+            players = [{ id: 'host', name: myNick, ready: false }];
+            showScreen('screen-lobby');
+            updateLobbyUI();
+        });
+        peer.on('connection', (c) => c.on('data', (data) => handleData(data, c)));
+    }
+
+    function joinRoom() {
+        const tid = document.getElementById('joinId').value.trim();
+        myNick = document.getElementById('nick').value;
+        peer = new Peer();
+        peer.on('open', (id) => {
+            myId = id;
+            conn = peer.connect(tid);
+            conn.on('open', () => {
+                conn.send({ type: 'JOIN', name: myNick });
+                showScreen('screen-lobby');
+            });
+            conn.on('data', (data) => handleData(data, conn));
+        });
+    }
+
+    function handleData(data, c) {
+        if(data.type === 'JOIN' && isHost) { players.push({ id: c.peer, name: data.name, ready: false, conn: c }); broadcastPlayers(); }
+        if(data.type === 'UPDATE_PLAYERS') { players = data.players; updateLobbyUI(); }
+        if(data.type === 'READY' && isHost) { let p = players.find(x => x.id === c.peer); if(p) p.ready = true; broadcastPlayers(); }
+        if(data.type === 'START') { cards = data.cards; currentRound = 1; startRound(); }
+        if(data.type === 'VOTE') { votes[c.peer] = data.targetId; checkVotes(); }
+        if(data.type === 'PHASE_ANSWER') { startAnswerPhase(data.targetId, data.targetName); }
+        if(data.type === 'SUBMIT_ANS' && isHost) { processGemini(data.text); }
+        if(data.type === 'AI_RESULT') { showAIResult(data.result); }
+    }
+
+    function broadcast(data) { players.forEach(p => p.conn && p.conn.send(data)); }
+    function broadcastPlayers() {
+        broadcast({ type: 'UPDATE_PLAYERS', players: players.map(p => ({id: p.id, name: p.name, ready: p.ready})) });
+        updateLobbyUI();
+    }
+
+    function updateLobbyUI() {
+        document.getElementById('playerList').innerHTML = players.map(p => `<div class="player-item">${p.name} ${p.ready ? '✅' : '⏳'}</div>`).join('');
+        if(isHost) document.getElementById('startBtn').style.display = (players.length > 1 && players.every(p => p.ready || p.id === 'host')) ? 'block' : 'none';
+    }
+
+    function sendReady() {
+        if(isHost) { players[0].ready = true; updateLobbyUI(); broadcastPlayers(); } else { conn.send({type: 'READY'}); }
+        document.getElementById('readyBtn').disabled = true;
+    }
+
+    function startGame() { broadcast({type: 'START', cards: cards}); startRound(); }
+
+    function startRound() {
+        showScreen('screen-game');
+        document.getElementById('roundTxt').innerText = `Rodada ${currentRound} / 10`;
+        document.getElementById('qCard').innerText = cards[currentRound-1];
+        document.getElementById('vote-section').style.display = "block";
+        document.getElementById('answer-section').style.display = "none";
+        document.getElementById('ai-section').style.display = "none";
+        votes = {};
+        const area = document.getElementById('targetButtons');
+        area.innerHTML = players.map(p => `<button onclick="voteFor('${p.id}')">${p.name}</button>`).join('');
+        startTimer(15, () => { if(isHost) checkVotes(true); });
+    }
+
+    window.voteFor = (id) => {
+        if(isHost) { votes['host'] = id; checkVotes(); } else { conn.send({type: 'VOTE', targetId: id}); }
+        document.getElementById('targetButtons').innerHTML = "<p>Voto registrado!</p>";
+    };
+
+    function checkVotes(force = false) {
+        if(Object.keys(votes).length === players.length || force) {
+            clearInterval(timerInt);
+            let counts = {};
+            Object.values(votes).forEach(v => counts[v] = (counts[v] || 0) + 1);
+            let winId = Object.keys(counts).reduce((a, b) => counts[a] > counts[b] ? a : b, players[0].id);
+            let winName = players.find(p => p.id === winId).name;
+            broadcast({ type: 'PHASE_ANSWER', targetId: winId, targetName: winName });
+            startAnswerPhase(winId, winName);
+        }
+    }
+
+    function startAnswerPhase(tid, tname) {
+        document.getElementById('vote-section').style.display = "none";
+        document.getElementById('answer-section').style.display = "block";
+        const isMe = (isHost && tid === 'host') || (!isHost && tid === myId);
+        document.getElementById('qCard').innerHTML = `<small>Respondendo:</small><br><b>${tname}</b><br><br>${cards[currentRound-1]}`;
+        document.getElementById('ansInp').style.display = isMe ? "block" : "none";
+        document.getElementById('btnSendAns').style.display = isMe ? "block" : "none";
+        if(isMe) document.getElementById('ansInp').focus();
+        startTimer(30, () => { if(isMe) submitAnswer(); });
+    }
+
+    function submitAnswer() {
+        const text = document.getElementById('ansInp').value;
+        if(isHost) processGemini(text); else conn.send({type: 'SUBMIT_ANS', text: text});
+    }
+
+    async function processGemini(ans) {
+        document.getElementById('answer-section').style.display = "none";
+        document.getElementById('ai-section').style.display = "block";
+        document.getElementById('ai-result').innerText = "Consultando o Oráculo...";
+        
+        const prompt = `Pergunta: ${cards[currentRound-1]}. Resposta: ${ans}. Diga se está correto e explique brevemente com tom geek. Nota 0-100.`;
+        
+        // VOLTAMOS PARA v1beta QUE É MAIS COMPATÍVEL COM O FLASH 1.5
+        const models = ["gemini-1.5-flash", "gemini-pro"];
+        for (let m of models) {
+            try {
+                const url = `https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent?key=${geminiKey}`;
+                const resp = await fetch(url, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+                });
+
+                if (!resp.ok) continue;
+
+                const data = await resp.json();
+                const resText = data.candidates[0].content.parts[0].text;
+                showAIResult(resText);
+                broadcast({ type: 'AI_RESULT', result: resText });
+                
+                setTimeout(() => {
+                    currentRound++;
+                    if(currentRound <= 10) startGame(); else alert("Fim da Jornada!");
+                }, 10000);
+                return;
+            } catch (e) { console.log(m + " falhou."); }
+        }
+        showAIResult("Erro Real: Verifique sua chave no AI Studio.");
+    }
+
+    function showAIResult(txt) {
+        document.getElementById('ai-section').style.display = "block";
+        document.getElementById('ai-result').innerText = txt;
+    }
+
+    function startTimer(s, cb) {
+        clearInterval(timerInt);
+        let t = s;
+        document.getElementById('timerDisplay').innerText = t;
+        timerInt = setInterval(() => {
+            t--; document.getElementById('timerDisplay').innerText = t;
+            if(t <= 0) { clearInterval(timerInt); cb(); }
+        }, 1000);
+    }
+
+    function copyId() { navigator.clipboard.writeText(myId); alert("Código copiado!"); }
+</script>
+</body>
+</html>
