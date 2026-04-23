@@ -3,18 +3,18 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Oráculo IA | Estabilidade Total</title>
+    <title>Oráculo IA |aaaaaaaaa</title>
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <style>
         :root { --p: #6c5ce7; --bg: #1e272e; --card: #ffffff; --danger: #ff7675; --success: #00b894; }
         body { font-family: 'Segoe UI', sans-serif; background: var(--bg); color: white; display: flex; justify-content: center; padding: 20px; margin: 0; }
         .container { width: 100%; max-width: 500px; background: #2f3640; padding: 25px; border-radius: 15px; text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
         .screen { display: none; }
-        .active { display: block; animation: fadeIn 0.3s; }
-        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        .active { display: block; }
         input, button { width: 100%; padding: 12px; margin: 10px 0; border-radius: 8px; border: none; font-size: 1rem; box-sizing: border-box; }
-        button { background: var(--p); color: white; cursor: pointer; font-weight: bold; }
-        .player-item { background: #3d444b; padding: 10px; margin: 5px 0; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; }
+        button { background: var(--p); color: white; cursor: pointer; font-weight: bold; transition: 0.2s; }
+        button:hover { filter: brightness(1.1); }
+        .player-item { background: #3d444b; padding: 10px; margin: 5px 0; border-radius: 8px; display: flex; justify-content: space-between; }
         .card { background: white; color: #333; padding: 20px; border-radius: 12px; font-size: 1.2rem; margin: 15px 0; font-weight: bold; border-bottom: 5px solid var(--p); }
         .timer { font-size: 2.5rem; color: var(--danger); font-weight: bold; }
         #my-id-display { background: #1e272e; padding: 10px; border-radius: 5px; color: #f9ca24; cursor: pointer; font-family: monospace; }
@@ -24,11 +24,11 @@
 <body>
 
 <div class="container">
-    <h2 id="status-line">🔮 ORÁCULO IA</h2>
+    <h2 id="status-line">🔮 ORÁCULO DA IA</h2>
 
     <div id="screen-home" class="screen active">
         <input type="text" id="nick" placeholder="Seu apelido...">
-        <input type="password" id="geminiKey" placeholder="Sua API Key (AIza...)">
+        <input type="password" id="geminiKey" placeholder="Cole sua API Key aqui">
         <button onclick="prepareSetup()">Configurar Sala</button>
         <hr style="border: 0; border-top: 1px solid #444; margin: 20px 0;">
         <input type="text" id="joinId" placeholder="Código do amigo">
@@ -51,17 +51,16 @@
     <div id="screen-game" class="screen">
         <div id="roundTxt" style="font-weight: bold;">Rodada 1 / 10</div>
         <div id="timerDisplay" class="timer">15</div>
-        <div id="qCard" class="card">Aguardando...</div>
+        <div id="qCard" class="card">Carregando...</div>
         <div id="vote-section">
             <p>VOTAÇÃO: Quem responde?</p>
             <div id="targetButtons"></div>
         </div>
         <div id="answer-section" style="display:none">
             <input type="text" id="ansInp" placeholder="Sua resposta...">
-            <button id="btnSendAns" onclick="submitAnswer()">ENVIAR AO ORÁCULO</button>
+            <button id="btnSendAns" onclick="submitAnswer()">ENVIAR RESPOSTA</button>
         </div>
         <div id="ai-section" style="display:none">
-            <p>🤖 O Oráculo está analisando...</p>
             <div id="ai-result" class="card"></div>
         </div>
     </div>
@@ -80,9 +79,8 @@
 
     function prepareSetup() {
         myNick = document.getElementById('nick').value;
-        // LIMPEZA DA CHAVE AQUI:
         geminiKey = document.getElementById('geminiKey').value.trim();
-        if(!myNick || !geminiKey) return alert("Preencha Nick e Chave!");
+        if(!myNick || !geminiKey) return alert("Preencha o Nick e a Chave!");
         showScreen('screen-setup');
     }
 
@@ -159,7 +157,7 @@
 
     window.voteFor = (id) => {
         if(isHost) { votes['host'] = id; checkVotes(); } else { conn.send({type: 'VOTE', targetId: id}); }
-        document.getElementById('targetButtons').innerHTML = "<p>Voto computado!</p>";
+        document.getElementById('targetButtons').innerHTML = "<p>Voto registrado!</p>";
     };
 
     function checkVotes(force = false) {
@@ -178,11 +176,10 @@
         document.getElementById('vote-section').style.display = "none";
         document.getElementById('answer-section').style.display = "block";
         const isMe = (isHost && tid === 'host') || (!isHost && tid === myId);
-        document.getElementById('qCard').innerHTML = `<small>Respondendo:</small><br><b>${tname}</b><br><br>${cards[currentRound-1]}`;
-        const input = document.getElementById('ansInp');
-        const btn = document.getElementById('btnSendAns');
-        if (isMe) { input.style.display = "block"; btn.style.display = "block"; input.value = ""; input.focus(); } 
-        else { input.style.display = "none"; btn.style.display = "none"; }
+        document.getElementById('qCard').innerHTML = `<small>Sorteado:</small> <b>${tname}</b><br><br>${cards[currentRound-1]}`;
+        document.getElementById('ansInp').style.display = isMe ? "block" : "none";
+        document.getElementById('btnSendAns').style.display = isMe ? "block" : "none";
+        if(isMe) document.getElementById('ansInp').focus();
         startTimer(30, () => { if(isMe) submitAnswer(); });
     }
 
@@ -194,27 +191,22 @@
     async function processGemini(ans) {
         document.getElementById('answer-section').style.display = "none";
         document.getElementById('ai-section').style.display = "block";
-        document.getElementById('ai-result').innerText = "Invocando o Oráculo...";
+        document.getElementById('ai-result').innerText = "Analisando...";
         
-        // CORREÇÃO DO PROMPT PARA EVITAR ERRO 400
-        const promptText = `Pergunta: ${cards[currentRound-1]}. Resposta do jogador: ${ans}. Diga se está correto e dê nota 0-100.`;
+        const prompt = `Pergunta: ${cards[currentRound-1]}. Resposta: ${ans}. Diga se está correto e explique brevemente. Nota 0-100.`;
         
         try {
-            // USANDO v1beta COM gemini-1.5-flash
+            // USANDO v1beta COM gemini-1.5-flash (O modelo mais estável hoje)
             const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiKey}`;
+            
             const resp = await fetch(url, {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({
-                    contents: [{
-                        parts: [{
-                            text: promptText
-                        }]
-                    }]
-                })
+                body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
             });
 
             const data = await resp.json();
+            
             if (data.error) throw new Error(data.error.message);
 
             const resText = data.candidates[0].content.parts[0].text;
@@ -224,9 +216,10 @@
             setTimeout(() => {
                 currentRound++;
                 if(currentRound <= 10) startGame(); else alert("Fim da Jornada!");
-            }, 10000);
+            }, 8000);
+
         } catch (e) {
-            showAIResult("O Oráculo falhou: " + e.message);
+            showAIResult("Erro: " + e.message + ". Tente criar uma chave nova e NÃO COLE NO CHAT.");
         }
     }
 
@@ -245,7 +238,7 @@
         }, 1000);
     }
 
-    function copyId() { navigator.clipboard.writeText(myId); alert("Código copiado!"); }
+    function copyId() { navigator.clipboard.writeText(myId); alert("Copiado!"); }
 </script>
 </body>
 </html>
